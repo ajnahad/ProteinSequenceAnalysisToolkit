@@ -83,7 +83,7 @@ class ProteinSequence(Sequence):
     } 
     def validate(self):
         if not all(aa in self.AMINO_ACIDS for aa in self.sequence):
-            raise ValueError("Sequence contains invalid aminoacids. ")
+            raise ValueError(f"Sequence {id} contains invalid aminoacids. ")
         return True
     def calculate_molecular_weight(self):
         total = 0
@@ -99,3 +99,98 @@ class ProteinSequence(Sequence):
         counts = Counter(self.sequence)
         total = len(self.sequence)
         return {aa: round(count/total, 2) for aa, count in counts.items()}
+
+class DNASequence(Sequence):
+    VALID_BASES = {"A", "T", "C", "G"}
+    COMPLEMENT_MAP = {
+        "A" : "T", "T" : "A", "C" : "G", "G" :"C"
+    }
+    AA_CODONS = {
+        # Phenylalanine
+        "TTT": "F", "TTC": "F",
+        # Leucine
+        "TTA": "L", "TTG": "L",
+        "CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
+        # Isoleucine
+        "ATT": "I", "ATC": "I", "ATA": "I",
+        # Methionine (START)
+        "ATG": "M",
+        # Valine
+        "GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V",
+        # Serine
+        "TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S",
+        "AGT": "S", "AGC": "S",
+        # Proline
+        "CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
+        # Threonine
+        "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
+        # Alanine
+        "GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A",
+        # Tyrosine
+        "TAT": "Y", "TAC": "Y",
+        # Histidine
+        "CAT": "H", "CAC": "H",
+        # Glutamine
+        "CAA": "Q", "CAG": "Q",
+        # Asparagine
+        "AAT": "N", "AAC": "N",
+        # Lysine
+        "AAA": "K", "AAG": "K",
+        # Aspartic Acid
+        "GAT": "D", "GAC": "D",
+        # Glutamic Acid
+        "GAA": "E", "GAG": "E",
+        # Cysteine
+        "TGT": "C", "TGC": "C",
+        # Tryptophan
+        "TGG": "W",
+        # Arginine
+        "CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
+        "AGA": "R", "AGG": "R",
+        # Glycine
+        "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
+        # STOP codons
+        "TAA": "*", "TAG": "*", "TGA": "*"
+    }
+    def validate(self):
+        if not all(nucleotide in self.VALID_BASES for nucleotide in self.sequence):
+            raise ValueError(f"Sequence {id} contains invalid nucleotides. ")
+        return True
+    def complement(self):
+        return "".join([self.COMPLEMENT_MAP[base] if base in self.VALID_BASES else "X" for base in self.sequence])
+    def reverse_complement(self):
+       return self.complement()[::-1]
+    def transcribe(self):
+        return "".join(["U" if base == "T" else base for base in self.sequence]) 
+    def translate(self, frame=0, input="DNA"):
+        self.validate()
+        amino_acids = []
+        for i in range(frame, len(self.sequence), 3):
+            codon = self.sequence[i:i+3] 
+            if len(codon) < 3: 
+                break
+            amino_acids.append(self.AA_CODONS[codon])
+        return "".join(amino_acids)
+    def find_orfs(self, min_length=100):
+        START_CODON = "ATG"
+        STOP_CODONS = {"TAA", "TAG", "TGA"}
+        orfs = []
+        for frame in range(3):
+            i = frame
+            while i + 3 <= len(self.sequence):
+                codon = self.sequence[i:i+3]
+                if codon == START_CODON:
+                    j = i
+                    while j + 3 <= len(self.sequence):
+                        next_codon = self.sequence[j:j+3]
+                        if next_codon in STOP_CODONS:
+                            orf_seq = self.sequence[i:j+3] # the whole ORF sequence string
+                            if len(orf_seq) >= min_length:
+                                orfs.append(orf_seq)
+                            break
+                        j += 3
+                    i = j + 3 
+                else:
+                    i += 3
+        return orfs
+            
