@@ -10,55 +10,64 @@ Responsibility: Sequence representation, validation, basic operations
 import datetime 
 import abc
 from collections import Counter
-# import database as ds
 
 class Sequence(abc.ABC):
-    sequence = ""
-    id = ""
-    description = ""
-    creation_date = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-    def __init__(self, sequence, id, description):
-        #TODO: add validation for sequence and id AFTER writing database.py
+    """
+    -Abstract base class for biological sequences
+    -Provides common sequence behavior such as slicing,
+    FASTA conversion, and motif searching
+    """
+    def __init__(self, sequence, seq_id, description):
         self.sequence = sequence
-        self.id = id 
+        self.seq_id = seq_id
         self.description = description
+        self.creation_date = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
     def __str__(self):
         return str(self.sequence)
     def __repr__(self):
-        return f"Sequence {self.id}: {self.sequence}"
+        return f"Sequence {self.seq_id}: {self.sequence}"
     def __len__(self):
         return len(self.sequence)
     def __getitem__(self, index):
         return self.sequence[index]
     @abc.abstractmethod
     def validate(self):
+        """
+        Validates the sequence content
+        Raises a ValueError if invalid symbols are present
+        """
         pass
     @abc.abstractmethod
     def get_composition(self):
         pass
     def to_fasta(self):
         seq = self.sequence.replace(" ", "")
-        return f">{self.description}{seq}"
+        return f">{self.seq_id}{self.description}\n{seq}"
     def find_motif(self, pattern):
+        """
+        Finds all occurrences of a motif in the sequence
+        -parameter - pattern [str]: subsequence to search for
+        -returns a list[int]: starting indices of matches
+        """
         found_at = []
         k = len(pattern)
-        for i in range(0, len(self.sequence)-k):
+        for i in range(0, len(self.sequence)-k+1):
             if self.sequence[i:i+k] == pattern:
                 found_at.append(i)
         return found_at
     @classmethod
     def from_fasta(cls, fasta_string):
         header, _, seq = fasta_string.partition("\n") # splits into id with description - header and sequence 
-        seq.replace(" ", "") 
+        seq = seq.replace(" ", "") 
         parts = header[1:].split(maxsplit=1) # removes ">" and split
-        seq_id = parts[0] 
+        s_id = parts[0] 
         d = parts[1] if len(parts) > 1 else "" # description 
-        return cls(seq, seq_id, d)
+        return cls(seq, s_id, d)
     def get_subsequence(self, start, end):
         subsequence = self.sequence[start:end]
-        id = f"{self.sequence.id}_{start}-{end}"
-        description = f"Subsequence of sequence [id = {self.sequence.id}] from position {start} to {end}"
-        return self.__class__(subsequence, id, description)
+        s_id = f"{self.seq_id}_{start}-{end}"
+        description = f"Subsequence of sequence [id = {self.seq_id}] from position {start} to {end}"
+        return self.__class__(subsequence, s_id, description)
     def get_sequence(self):
         return self.sequence
     def set_sequence(self, seq):
@@ -83,7 +92,7 @@ class ProteinSequence(Sequence):
     } 
     def validate(self):
         if not all(aa in self.AMINO_ACIDS for aa in self.sequence):
-            raise ValueError(f"Sequence {id} contains invalid aminoacids. ")
+            raise ValueError(f"Sequence {self.seq_id} contains invalid aminoacids. ")
         return True
     def calculate_molecular_weight(self):
         total = 0
@@ -154,7 +163,7 @@ class DNASequence(Sequence):
     }
     def validate(self):
         if not all(nucleotide in self.VALID_BASES for nucleotide in self.sequence):
-            raise ValueError(f"Sequence {id} contains invalid nucleotides. ")
+            raise ValueError(f"Sequence {self.seq_id} contains invalid nucleotides. ")
         return True
     def complement(self):
         return "".join([self.COMPLEMENT_MAP[base] if base in self.VALID_BASES else "X" for base in self.sequence])
@@ -163,6 +172,11 @@ class DNASequence(Sequence):
     def transcribe(self):
         return "".join(["U" if base == "T" else base for base in self.sequence]) 
     def translate(self, frame=0, input="DNA"):
+        """
+        Translates DNA sequence into amino acids
+        -parameter - frame [int]: reading frame (0, 1, or 2)
+        -returns a str - amino acid sequence
+        """
         self.validate()
         amino_acids = []
         for i in range(frame, len(self.sequence), 3):

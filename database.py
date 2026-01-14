@@ -10,33 +10,34 @@ class SequenceDatabase:
     def __init__(self, name):
         self.name = name
         self.sequences = {}
-    def add_sequence(self, sequence, id, description):
-        if id in self.sequences.keys():
+    def add_sequence(self, sequence, s_id, description):
+        if s_id in self.sequences.keys():
             raise KeyError("This ID is taken.")
-        elif sequence in self.sequences.values():
+        elif any(sequence == seq.sequence for seq in self.sequences.values()):
             raise ValueError("This sequence is already in the database.")
         else:
-            if "ATCG" in self.sequence:
-                sequence[id] = DNASequence(sequence, id, description)
+            if set(sequence.upper()) <= set("ATCG"):
+                obj = DNASequence(sequence, s_id, description)
             else:
-                sequence[id] = ProteinSequence(sequence, id, description)
-    def remove_sequence(self, id):
-        if id not in self.sequence.keys():
+                obj = ProteinSequence(sequence, s_id, description)
+        self.sequences[s_id] = obj    
+    def remove_sequence(self, s_id):
+        if s_id not in self.sequences.keys():
             raise KeyError("This ID does not exist in the database. ")
         else:
-            del self.sequences[id]
-    def get_sequence(self, id):
-        if id not in self.sequence.keys():
+            del self.sequences[s_id]
+    def get_sequence(self, s_id):
+        if s_id not in self.sequences.keys():
             raise KeyError("This ID does not exist in the database. ")
         else:
-            return self.sequences[id]
+            return self.sequences[s_id]
     def search_by_keyword(self, keyword):
         for seq in self.sequences.values():
             if keyword.lower() in seq.description:
-                return seq.id
+                return seq.seq_id
         print(f"No sequence descriptions containing {keyword} found. ")
     def filter_by_length(self, min_length, max_length):
-        return {k: v for k, v in self.sequences.items() if min_length <= len(v) <= max_length}
+        return {k: v for k, v in self.sequences.items() if min_length <= len(v.sequence) <= max_length}
     def get_statistics(self):
         lengths = [len(s.sequence) for s in self.sequences.values()]
         if not lengths:
@@ -56,9 +57,9 @@ class SequenceDatabase:
         if seqtype == "nucleotides":
             valid_set = set("ATCGX")
         elif seqtype == "aminoacids":
-            valid_set == set("ACDEFGHIKLMNPQRSTVWY*")
+            valid_set = set("ACDEFGHIKLMNPQRSTVWY*")
         else:
-            raise ValueError("seqtype must be 'nucleotides' or 'aminoacids")
+            raise ValueError("seqtype must be 'nucleotides' or 'aminoacids'")
         with open(filepath, "r") as f:
             for line in f:
                 line = line.strip()
@@ -70,16 +71,16 @@ class SequenceDatabase:
     def export_to_fasta(sequences, filepath):
         with open(filepath, "w") as f:
             for seq in sequences:
-                header = ">" + seq.id + " " + seq.description
+                header = ">" + seq.seq_id + " " + seq.description
                 f.write(header + "\n") 
                 f.write(seq.sequence + "\n")
     @classmethod
     def merge_databases(cls, d1, d2, database_name):
         db = cls(database_name)
         for seq in d1:
-            db.add_sequence(seq.sequence, seq.id, seq.description)
+            db.add_sequence(seq.sequence, seq.s_id, seq.description)
         for seq in d2:
-            db.add_sequence(seq.sequence, seq.id, seq.description)
+            db.add_sequence(seq.sequence, seq.s_id, seq.description)
         return db
     @classmethod
     def from_fasta_file(cls, filepath, name, seqtype):
@@ -94,10 +95,10 @@ class SequenceDatabase:
                 if line.startswith(">"):
                     if seq_id is not None:
                         if seqtype == "nucleotides":
-                           obj = DNASequence(seq_id, "".join(seq), descr)
+                           obj = DNASequence("".join(seq), seq_id, descr)
                         elif seqtype == "aminoacids":
-                            obj = ProteinSequence(seq_id, "".join(seq), descr)
-                        db.add_sequence(obj.sequence, obj.id, obj.description)
+                            obj = ProteinSequence("".join(seq), seq_id, descr)
+                        db.add_sequence(obj.sequence, obj.s_id, obj.description)
                     header = line[1:]
                     parts = header.split(maxsplit=1)
                     seq_id = parts[0]
@@ -107,8 +108,8 @@ class SequenceDatabase:
                     seq.append(line)
             if seq_id is not None:
                 if seqtype == "nucleotides":
-                    obj = DNASequence(seq_id, "".join(seq), descr)
+                    obj = DNASequence("".join(seq), seq_id, descr)
                 elif seqtype == "aminoacids":
-                    obj = ProteinSequence(seq_id, "".join(seq), descr)
-                db.add_sequence(obj.sequence, obj.id, obj.description)
+                    obj = ProteinSequence("".join(seq), seq_id, descr)
+                db.add_sequence(obj.sequence, obj.s_id, obj.description)
         return db                        

@@ -6,12 +6,8 @@ Responsibility: Molecular weight, pI, hydropathy, charge at pH, instability inde
 
 """
 from collections import Counter 
-from Bio.SeqUtils import ProtParam
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 class SequenceAnalyzer:
-    def __init__(self, sequence):
-        self.sequence = sequence
-        self.ionizable_counts = {}
-    DIWV = ProtParam.Instab_Matrix
     pKa_N_term = 9.69
     pKa_C_term = 2.34
     pKa_sidechains = {
@@ -74,37 +70,53 @@ class SequenceAnalyzer:
         "M": 149.21, "F": 165.19, "P": 115.13, "S": 105.09,
         "T": 119.12, "W": 204.23, "Y": 181.19, "V": 117.15
     }
+    def __init__(self, sequence):
+        """
+        Parameter - sequence [str]: protein sequence
+        """
+        self.sequence = sequence
+        self.counts = Counter(sequence)
+        self.ionizable_counts = Counter(
+            aa for aa in sequence if aa in self.pKa_sidechains
+        )
+        self._protparam = ProteinAnalysis(sequence)
     def net_charge_at_ph(self, pH):
-        charge = 0
+        """
+        Computes net charge at a given pH using Henderson-Hasselbalch
+        """
+        charge = 0.0
         # Positive groups (N-terminus, K, R, H)
-        charge += +1 / (1+10^(pH-self.pKa_N_term)) # N-terminus
-        charge += self.ionizable_counts["K"] * (1 / (1 + 10^(pH-self.pKa_sidechains["K"])))
-        charge += self.ionizable_counts["R"] * (1 / (1 + 10^(pH-self.pKa_sidechains["R"])))
-        charge += self.ionizable_counts["H"] * (1 / (1 + 10^(pH-self.pKa_sidechains["H"])))
+        charge += +1 / (1+10**(pH-self.pKa_N_term)) # N-terminus
+        charge += self.ionizable_counts["K"] * (1 / (1 + 10**(pH-self.pKa_sidechains["K"])))
+        charge += self.ionizable_counts["R"] * (1 / (1 + 10**(pH-self.pKa_sidechains["R"])))
+        charge += self.ionizable_counts["H"] * (1 / (1 + 10**(pH-self.pKa_sidechains["H"])))
         # Negative groups (C-terminus, D, E, C, Y)
-        charge += -1 / (1 + 10^(self.pKa_C_term-pH)) # C terminus
-        charge += self.ionizable_counts["D"] * (-1 / (1 + 10^(self.pKa_sidechains["D"] - pH)))
-        charge += self.ionizable_counts["E"] * (-1 / (1 + 10^(self.pKa_sidechains["E"] - pH)))
-        charge += self.ionizable_counts["C"] * (-1 / (1 + 10^(self.pKa_sidechains["C"] - pH)))
-        charge += self.ionizable_counts["Y"] * (-1 / (1 + 10^(self.pKa_sidechains["Y"] - pH)))
+        charge += -1 / (1 + 10**(self.pKa_C_term-pH)) # C terminus
+        charge += self.ionizable_counts["D"] * (-1 / (1 + 10**(self.pKa_sidechains["D"] - pH)))
+        charge += self.ionizable_counts["E"] * (-1 / (1 + 10**(self.pKa_sidechains["E"] - pH)))
+        charge += self.ionizable_counts["C"] * (-1 / (1 + 10**(self.pKa_sidechains["C"] - pH)))
+        charge += self.ionizable_counts["Y"] * (-1 / (1 + 10**(self.pKa_sidechains["Y"] - pH)))
         return charge
     def calculate_isoelectric_point(self):
-        counts = Counter(self.sequence)
-        ionizable_counts = {aa: counts.get(aa, 0) for aa in self.pKa_sidechains}
-        ionizable_counts["N-terminus"] = 1
-        ionizable_counts["C-terminus"] = 1
-        pH = 7.0
+        """
+        Estimates the isoelectric point by brute-force pH scanning
+        """
+        pH = 0.0
         step = 0.01
         while pH <= 14.0:
             if abs(self.net_charge_at_ph(pH)) < 0.01: # tolerance
-                return pH
+                return round(pH, 2)
             pH += step
         return None
     def predict_secondary_structure(self):
+        """
+        Predicts secondary structure using Chou-Fasman propensities
+        -returns a str - a sequence of "H" (helix), "S" (sheet), and "C" (coil)
+        """
         secondary_sequence = ""
         for residue in self.sequence:
             helix_score = self.CHOU_FASMAN_PROPENSITY[residue]["H"]
-            sheet_score = self.CHOU_FASMAN_PROPENSITY[residue]["S"]
+            sheet_score = self.CHOU_FASMAN_PROPENSITY[residue]["E"]
             coil_score = self.CHOU_FASMAN_PROPENSITY[residue]["C"]
             max_score = max(helix_score, sheet_score, coil_score)
             if max_score == helix_score:
@@ -114,7 +126,11 @@ class SequenceAnalyzer:
             else:
                 secondary_sequence += "C"
         return secondary_sequence
-    def identify_domain_patterns(self):
+    def identify_domain_patterns(self): 
+        """
+        Identifies simplified domain motifs using pattern matching
+        -returns a dict - domain names mapped to lists of (start, end) positions
+        """
         matches = {}
         for name, pattern in self.DOMAIN_PATTERNS.items():
             positions = []
@@ -130,29 +146,26 @@ class SequenceAnalyzer:
                 matches[name] = positions
         return matches
     def calculate_instability_index(self): # Guruprasad scoring method 
-        if len(self.sequence) < 2:
-            return 0
-        sum_weights = 0
-        for i in range(len(self.sequence)-1):
-            dipeptide = self.sequence[i:i+2] 
-            sum_weights += self.DIWV.get(dipeptide, 0) # fallback 0 if missing
-        instability_index = (10/len(self.sequence)) * sum_weights
-        return instability_index
+        """
+        Calculates protein instability index (Guruprasad method)
+        """
+        return self._protparam.instability_index()
     def calculate_gravy(self):
+        """
+        Computes GRAVY (average hydropathy)
+        """
         if not self.sequence:
-            return 0
+            return 0.0
         total = sum(self.HYDROPATHY_INDEX.get(aa, 0) for aa in self.sequence)
         return total / len(self.sequence)
     @property
     def basic_properties(self):
+        """
+        Returns basic sequence statistics.
+        """
         mw = sum(self.AMINO_ACID_WEIGHTS.get(aa, 0) for aa in self.sequence)
         return {
             "length": len(self.sequence),
             "molecular_weight" : round(mw, 2),
-            "GRAVY" : round(self.calculate_gravy(self.sequence), 2)
+            "GRAVY" : round(self.calculate_gravy(), 2)
         }
-    @staticmethod
-    def parse_analysis_report():
-        ...
-    #TODO: write after making the report class
-    
